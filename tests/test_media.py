@@ -25,6 +25,15 @@ class MediaTests(unittest.TestCase):
             return backend
         self.downloader = MediaDownloader(DownloadOptions(), backend_factory=factory)
 
+    def test_download_selects_video_and_preserves_dynamic_extension(self):
+        self.downloader.download('https://example.org/video', title='Intro')
+        backend = self.instances[0]
+        self.assertEqual(backend.calls[0][1], True)
+        self.assertEqual(backend.options['format'], 'bestvideo+bestaudio/best')
+        self.assertTrue(backend.options['outtmpl'].endswith('Intro.%(ext)s'))
+        self.assertTrue(backend.options['continuedl'])
+        self.assertTrue(backend.options['nooverwrites'])
+
     def test_metadata_extraction_does_not_download_or_expand_playlists(self):
         info = self.downloader.extract('https://example.org/video')
         backend = self.instances[0]
