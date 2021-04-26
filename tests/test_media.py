@@ -34,6 +34,10 @@ class MediaTests(unittest.TestCase):
         self.assertTrue(backend.options['continuedl'])
         self.assertTrue(backend.options['nooverwrites'])
 
+    def test_resolution_cap_keeps_audio_fallback(self):
+        options = MediaDownloader(DownloadOptions(height=720)).backend_options()
+        self.assertEqual(options['format'], 'bestvideo[height<=720]+bestaudio/best[height<=720]')
+
     def test_metadata_extraction_does_not_download_or_expand_playlists(self):
         info = self.downloader.extract('https://example.org/video')
         backend = self.instances[0]
