@@ -38,6 +38,12 @@ class MediaTests(unittest.TestCase):
         options = MediaDownloader(DownloadOptions(height=720)).backend_options()
         self.assertEqual(options['format'], 'bestvideo[height<=720]+bestaudio/best[height<=720]')
 
+    def test_audio_extraction_codec_and_bitrate(self):
+        options = MediaDownloader(DownloadOptions(mode='audio', audio_format='flac')).backend_options()
+        self.assertEqual(options['format'], 'bestaudio/best')
+        self.assertEqual(options['postprocessors'], [{'key': 'FFmpegExtractAudio',
+                         'preferredcodec': 'flac', 'preferredquality': '192'}])
+
     def test_metadata_extraction_does_not_download_or_expand_playlists(self):
         info = self.downloader.extract('https://example.org/video')
         backend = self.instances[0]

@@ -19,17 +19,24 @@ class MediaDownloader:
         self.progress = progress
 
     def format_selector(self):
+        if self.options.mode == 'audio':
+            return 'bestaudio/best'
         if self.options.height is not None:
             limit = self.options.height
             return 'bestvideo[height<={0}]+bestaudio/best[height<={0}]'.format(limit)
         return self.options.format_selector
 
     def backend_options(self):
-        return {'noplaylist': True, 'socket_timeout': self.options.timeout,
+        result = {'noplaylist': True, 'socket_timeout': self.options.timeout,
                 'quiet': self.options.quiet, 'format': self.format_selector(),
                 'continuedl': self.options.continue_download,
                 'nooverwrites': not self.options.overwrite,
                 'outtmpl': str(Path(self.options.output)).replace('%', '%%') + '/%(title)s [%(id)s].%(ext)s'}
+        if self.options.mode == 'audio':
+            result['postprocessors'] = [{'key': 'FFmpegExtractAudio',
+                'preferredcodec': self.options.audio_format,
+                'preferredquality': self.options.audio_quality}]
+        return result
 
     def download(self, url, title=None, directory=None):
         options = self.backend_options()
