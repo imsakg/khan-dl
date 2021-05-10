@@ -32,6 +32,10 @@ class MediaDownloader:
                 'continuedl': self.options.continue_download,
                 'nooverwrites': not self.options.overwrite,
                 'outtmpl': str(Path(self.options.output)).replace('%', '%%') + '/%(title)s [%(id)s].%(ext)s'}
+        result.update(writesubtitles=bool(self.options.subtitle_languages),
+                      writeautomaticsub=self.options.automatic_subtitles,
+                      subtitleslangs=list(self.options.subtitle_languages) or None,
+                      subtitlesformat=self.options.subtitle_format)
         if self.options.mode == 'audio':
             result['postprocessors'] = [{'key': 'FFmpegExtractAudio',
                 'preferredcodec': self.options.audio_format,

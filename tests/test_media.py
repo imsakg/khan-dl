@@ -44,6 +44,15 @@ class MediaTests(unittest.TestCase):
         self.assertEqual(options['postprocessors'], [{'key': 'FFmpegExtractAudio',
                          'preferredcodec': 'flac', 'preferredquality': '192'}])
 
+    def test_subtitle_languages_and_automatic_caption_opt_in(self):
+        options = MediaDownloader(DownloadOptions(subtitle_languages=('en', 'tr'),
+                    automatic_subtitles=True, subtitle_format='srt')).backend_options()
+        self.assertTrue(options['writesubtitles'])
+        self.assertTrue(options['writeautomaticsub'])
+        self.assertEqual(options['subtitleslangs'], ['en', 'tr'])
+        self.assertEqual(options['subtitlesformat'], 'srt')
+        self.assertFalse(self.downloader.backend_options()['writeautomaticsub'])
+
     def test_metadata_extraction_does_not_download_or_expand_playlists(self):
         info = self.downloader.extract('https://example.org/video')
         backend = self.instances[0]
