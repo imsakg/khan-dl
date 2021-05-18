@@ -53,6 +53,11 @@ class MediaTests(unittest.TestCase):
         self.assertEqual(options['subtitlesformat'], 'srt')
         self.assertFalse(self.downloader.backend_options()['writeautomaticsub'])
 
+    def test_subtitle_only_does_not_download_media(self):
+        options = MediaDownloader(DownloadOptions(subtitle_only=True)).backend_options()
+        self.assertTrue(options['skip_download'])
+        self.assertTrue(options['writesubtitles'])
+
     def test_metadata_extraction_does_not_download_or_expand_playlists(self):
         info = self.downloader.extract('https://example.org/video')
         backend = self.instances[0]

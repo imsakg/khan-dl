@@ -32,7 +32,8 @@ class MediaDownloader:
                 'continuedl': self.options.continue_download,
                 'nooverwrites': not self.options.overwrite,
                 'outtmpl': str(Path(self.options.output)).replace('%', '%%') + '/%(title)s [%(id)s].%(ext)s'}
-        result.update(writesubtitles=bool(self.options.subtitle_languages),
+        result.update(skip_download=self.options.subtitle_only,
+                      writesubtitles=bool(self.options.subtitle_languages) or self.options.subtitle_only,
                       writeautomaticsub=self.options.automatic_subtitles,
                       subtitleslangs=list(self.options.subtitle_languages) or None,
                       subtitlesformat=self.options.subtitle_format)
