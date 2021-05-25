@@ -41,6 +41,11 @@ class MediaDownloader:
             result['postprocessors'] = [{'key': 'FFmpegExtractAudio',
                 'preferredcodec': self.options.audio_format,
                 'preferredquality': self.options.audio_quality}]
+        if self.options.video_format and self.options.mode == 'video':
+            result['postprocessors'] = [{'key': 'FFmpegVideoConvertor',
+                                        'preferedformat': self.options.video_format}]
+        if self.options.ffmpeg_location:
+            result['ffmpeg_location'] = self.options.ffmpeg_location
         return result
 
     def download(self, url, title=None, directory=None):

@@ -58,6 +58,11 @@ class MediaTests(unittest.TestCase):
         self.assertTrue(options['skip_download'])
         self.assertTrue(options['writesubtitles'])
 
+    def test_video_conversion_uses_ffmpeg_postprocessor(self):
+        options = MediaDownloader(DownloadOptions(video_format='mkv', ffmpeg_location='/opt/ffmpeg')).backend_options()
+        self.assertEqual(options['postprocessors'], [{'key': 'FFmpegVideoConvertor', 'preferedformat': 'mkv'}])
+        self.assertEqual(options['ffmpeg_location'], '/opt/ffmpeg')
+
     def test_metadata_extraction_does_not_download_or_expand_playlists(self):
         info = self.downloader.extract('https://example.org/video')
         backend = self.instances[0]
