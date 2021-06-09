@@ -2,6 +2,8 @@
 from pathlib import Path
 from .options import DownloadOptions
 from .paths import output_template
+from .retry import retry_call
+import time
 
 
 def youtube_dl_factory(options):
@@ -13,10 +15,11 @@ def youtube_dl_factory(options):
 
 
 class MediaDownloader:
-    def __init__(self, options=None, backend_factory=None, progress=None):
+    def __init__(self, options=None, backend_factory=None, progress=None, sleep=time.sleep):
         self.options = options or DownloadOptions()
         self.backend_factory = backend_factory or youtube_dl_factory
         self.progress = progress
+        self.sleep = sleep
 
     def format_selector(self):
         if self.options.mode == 'audio':
@@ -27,7 +30,7 @@ class MediaDownloader:
         return self.options.format_selector
 
     def backend_options(self):
-        result = {'noplaylist': True, 'socket_timeout': self.options.timeout,
+        result = {'retries': 0, 'fragment_retries': self.options.retries, 'noplaylist': True, 'socket_timeout': self.options.timeout,
                 'quiet': self.options.quiet, 'format': self.format_selector(),
                 'continuedl': self.options.continue_download,
                 'nooverwrites': not self.options.overwrite,
@@ -56,9 +59,18 @@ class MediaDownloader:
             options['outtmpl'] = output_template(root, title)
         elif directory is not None:
             options['outtmpl'] = str(Path(root)).replace('%', '%%') + '/%(title)s [%(id)s].%(ext)s'
-        with self.backend_factory(options) as backend:
-            return backend.extract_info(url, download=True)
+        return self._extract(url, options, download=True)
 
     def extract(self, url):
-        with self.backend_factory(self.backend_options()) as backend:
-            return backend.extract_info(url, download=False)
+        return self._extract(url, self.backend_options(), download=False)
+
+    def _extract(self, url, options, download):
+        from youtube_dl.utils import DownloadError
+        def operation():
+            with self.backend_factory(options) as backend:
+                info = backend.extract_info(url, download=download)
+                if info is None:
+                    raise ValueError('extractor returned no media information')
+                return info
+        return retry_call(operation, retries=self.options.retries,
+                          exceptions=(OSError, DownloadError), sleep=self.sleep)

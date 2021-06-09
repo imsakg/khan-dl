@@ -63,6 +63,20 @@ class MediaTests(unittest.TestCase):
         self.assertEqual(options['postprocessors'], [{'key': 'FFmpegVideoConvertor', 'preferedformat': 'mkv'}])
         self.assertEqual(options['ffmpeg_location'], '/opt/ffmpeg')
 
+    def test_retry_reopens_backend_after_transient_network_error(self):
+        attempts = []
+        outer = self
+        class FlakyBackend(FakeBackend):
+            def extract_info(self, url, download):
+                attempts.append(1)
+                if len(attempts) < 3:
+                    raise OSError('connection reset')
+                return super().extract_info(url, download)
+        downloader = MediaDownloader(DownloadOptions(retries=2), backend_factory=FlakyBackend,
+                                     sleep=lambda delay: None)
+        self.assertEqual(downloader.extract('https://example.org/video')['id'], 'abc')
+        self.assertEqual(len(attempts), 3)
+
     def test_metadata_extraction_does_not_download_or_expand_playlists(self):
         info = self.downloader.extract('https://example.org/video')
         backend = self.instances[0]
