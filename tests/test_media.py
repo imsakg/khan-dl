@@ -77,6 +77,14 @@ class MediaTests(unittest.TestCase):
         self.assertEqual(downloader.extract('https://example.org/video')['id'], 'abc')
         self.assertEqual(len(attempts), 3)
 
+    def test_forwards_progress_and_bandwidth_limit(self):
+        events = []
+        downloader = MediaDownloader(DownloadOptions(rate_limit=2048), progress=events.append)
+        options = downloader.backend_options()
+        self.assertEqual(options['ratelimit'], 2048)
+        options['progress_hooks'][0]({'status': 'finished', 'downloaded_bytes': 20, 'total_bytes': 20})
+        self.assertEqual(events[0].percent, 100)
+
     def test_metadata_extraction_does_not_download_or_expand_playlists(self):
         info = self.downloader.extract('https://example.org/video')
         backend = self.instances[0]

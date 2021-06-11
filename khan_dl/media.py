@@ -3,6 +3,7 @@ from pathlib import Path
 from .options import DownloadOptions
 from .paths import output_template
 from .retry import retry_call
+from .progress import ProgressTracker
 import time
 
 
@@ -18,7 +19,7 @@ class MediaDownloader:
     def __init__(self, options=None, backend_factory=None, progress=None, sleep=time.sleep):
         self.options = options or DownloadOptions()
         self.backend_factory = backend_factory or youtube_dl_factory
-        self.progress = progress
+        self.progress = ProgressTracker(progress)
         self.sleep = sleep
 
     def format_selector(self):
@@ -30,7 +31,8 @@ class MediaDownloader:
         return self.options.format_selector
 
     def backend_options(self):
-        result = {'retries': 0, 'fragment_retries': self.options.retries, 'noplaylist': True, 'socket_timeout': self.options.timeout,
+        result = {'progress_hooks': [self.progress], 'ratelimit': self.options.rate_limit,
+                  'retries': 0, 'fragment_retries': self.options.retries, 'noplaylist': True, 'socket_timeout': self.options.timeout,
                 'quiet': self.options.quiet, 'format': self.format_selector(),
                 'continuedl': self.options.continue_download,
                 'nooverwrites': not self.options.overwrite,
