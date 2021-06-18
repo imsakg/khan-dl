@@ -85,6 +85,11 @@ class MediaTests(unittest.TestCase):
         options['progress_hooks'][0]({'status': 'finished', 'downloaded_bytes': 20, 'total_bytes': 20})
         self.assertEqual(events[0].percent, 100)
 
+    def test_persistent_archive_and_metadata_sidecars(self):
+        options = MediaDownloader(DownloadOptions(archive='archive.txt', write_metadata=True)).backend_options()
+        self.assertEqual(options['download_archive'], 'archive.txt')
+        self.assertTrue(options['writeinfojson'])
+
     def test_metadata_extraction_does_not_download_or_expand_playlists(self):
         info = self.downloader.extract('https://example.org/video')
         backend = self.instances[0]
