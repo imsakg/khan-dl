@@ -2,6 +2,7 @@
 from pathlib import Path
 from .options import DownloadOptions
 from .paths import output_template
+from .urls import validate_url
 from .retry import retry_call
 from .progress import ProgressTracker
 import time
@@ -69,6 +70,7 @@ class MediaDownloader:
         return self._extract(url, self.backend_options(), download=False)
 
     def _extract(self, url, options, download):
+        validate_url(url)
         from youtube_dl.utils import DownloadError
         def operation():
             with self.backend_factory(options) as backend:
