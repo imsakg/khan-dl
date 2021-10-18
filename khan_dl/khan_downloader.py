@@ -1,141 +1,77 @@
-from bs4 import BeautifulSoup
-import os
-import re
-import requests
-import youtube_dl
-from .topic_matcher import *
+"""Compatibility facade for course discovery and the shared media pipeline."""
+from dataclasses import replace
+from pathlib import Path
+from urllib.parse import urlsplit
+from .batch import BatchRunner
+from .courses import course_title, extract_video_ids, parse_units
+from .http import fetch_html
+from .media import MediaDownloader
+from .options import DownloadOptions
+from .paths import safe_component
+from .urls import validate_url
 
 
 class Khan_DL:
-    def __init__(self, output_rel_path, course_root_url):
+    def __init__(self, output_rel_path, course_root_url, options=None,
+                 page_fetcher=None, progress=None):
+        validate_url(course_root_url)
+        if urlsplit(course_root_url).hostname not in ('www.khanacademy.org', 'khanacademy.org'):
+            raise ValueError('course URL must belong to Khan Academy')
         self.course_root_url = course_root_url
-        self.output_rel_path = os.getcwd() + "/" + output_rel_path
+        self.output_rel_path = str(Path(output_rel_path or '.').expanduser().resolve())
+        self.options = replace(options or DownloadOptions(), output=self.output_rel_path)
+        self.page_fetcher = page_fetcher or fetch_html
+        self.progress = progress
+        self._units = None
+        self.download_jobs = []
+
+    def _fetch(self, url):
+        return self.page_fetcher(url, timeout=self.options.timeout, retries=self.options.retries)
 
     def get_course_html(self):
-        # Get Course Root Page HTML
-        page_source = requests.get(self.course_root_url).text
-        self.course_root_page_html = BeautifulSoup(page_source, "lxml")
+        self.course_root_page_html = self._fetch(self.course_root_url)
+        self._units = None
+        return self.course_root_page_html
+
+    def _parse_units(self):
+        if self._units is None:
+            self._units = parse_units(self.course_root_page_html, self.course_root_url)
+        return self._units
 
     def generate_unit_slugs(self):
-        """Generate Unit Header Slugs """
-
-        self.unit_slugs = []
-        self.unit_headers = []
-
-        # Get The Course Name
-        course_title = self.course_root_page_html.find(
-            attrs={"data-test-id": "unit-block-title"}
-        ).text
-
-        # Extract Unit Headers for the course
-        for units in self.course_root_page_html.find_all(
-            attrs={"data-test-id": "unit-header"}
-        ):
-            self.unit_headers.append(units.text)
-
-        # Builds Path Slugs at Unit Level
-        counter = 0
-        for headers in self.unit_headers:
-            self.unit_slugs.append(course_title + "/" + str(counter) + "_" + headers)
-            counter += 1
+        title = safe_component(course_title(self.course_root_page_html))
+        self.unit_headers = [name for name, url in self._parse_units()]
+        self.unit_slugs = [str(Path(title) / ('{:02d}_'.format(index) + safe_component(name)))
+                           for index, name in enumerate(self.unit_headers, 1)]
+        return self.unit_slugs
 
     def generate_unit_urls(self):
-        """Generate Unit URLs """
-
-        self.unit_urls = []
-        # Extract Unit Page URLs for the course
-        for urls in self.course_root_page_html.find_all(
-            attrs={"data-test-id": "unit-header"}
-        ):
-            self.unit_urls.append(urls["href"])
+        self.unit_urls = [url for name, url in self._parse_units()]
+        return self.unit_urls
 
     def generate_course_slugs_video_ids(self):
-        self.youtube_id_list = []
-        self.full_course_slugs = []
-        for urls, slugs in zip(self.unit_urls, self.unit_slugs):
-            unit_page_source = requests.get("https://www.khanacademy.org" + urls).text
-            self.unit_page_html = BeautifulSoup(unit_page_source, "lxml")
-            unit_counter = 0
+        if len(self.unit_urls) != len(self.unit_slugs):
+            raise ValueError('unit URL and output directory counts differ')
+        self.youtube_id_list, self.full_course_slugs, self.download_jobs = [], [], []
+        seen = set()
+        for unit_url, slug in zip(self.unit_urls, self.unit_slugs):
+            ids = extract_video_ids(self._fetch(unit_url))
+            for video_id in ids:
+                if video_id in seen:
+                    continue
+                seen.add(video_id)
+                directory = str(Path(self.output_rel_path) / slug)
+                self.youtube_id_list.append(video_id)
+                self.full_course_slugs.append(directory)
+                self.download_jobs.append(('https://www.youtube.com/watch?v=' + video_id, directory))
+        if not self.download_jobs:
+            raise ValueError('No video IDs found; Khan Academy markup may have changed')
+        return self.download_jobs
 
-            # Collect Youtube Ids from Sub Unit Page HTML list
-            current_youtube_id_list = re.findall(
-                r"\"youtubeId\":\"[A-Za-z0-9.\-_]{11}\"", str(self.unit_page_html)
-            )
-            current_youtube_id_list = list(dict.fromkeys(current_youtube_id_list))
-
-            for current_youtube_id in current_youtube_id_list:
-                self.youtube_id_list.append(current_youtube_id[13:24])
-
-            # Genearate Full Course Slugs and Relative Youtube Ids List
-            for unit_sub_heads, unit_sub_head_body in zip(
-                self.unit_page_html.find_all(
-                    attrs={"data-test-id": "lesson-card-link"}
-                ),
-                self.unit_page_html.find_all("div", class_="_1o51yl6"),
-            ):
-
-                video_counter = 0
-
-                # Find Individual Video Blocks and Validate whether it is video
-                # or not  - Classes vary dep. on Page
-                for unit_sub_head_div in unit_sub_head_body.find_all(
-                    "div", {"class": ["_10ct3cvu", "_1p9458yw"]}
-                ):
-                    aria_label_html = unit_sub_head_div.find_all(
-                        "span", class_="_e296pg"
-                    )
-                    aria_label = aria_label_html[0]["aria-label"]
-
-                    # Check whether it  is a video or not
-                    if aria_label == "Video":
-                        video_topic = unit_sub_head_div.find("span", class_="_14hvi6g8")
-
-                        self.full_course_slugs.append(
-                            self.output_rel_path
-                            + "/"
-                            + slugs
-                            + "/"
-                            + str(unit_counter)
-                            + "_"
-                            + unit_sub_heads.text
-                            + "/"
-                            + str(video_counter)
-                            + "_"
-                            + video_topic.text
-                            + ".mp4"
-                        )
-
-                    video_counter += 1
-                unit_counter += 1
-
-    def download_videos(self):
-        # Download Youtube Titles
-        print("Downloading Youtube Titles")
-        video_titles_list = []
-        video_id_titles_dict = {}
-        for video_id in self.youtube_id_list:
-            video_url = "http://www.youtube.com/watch?v=" + video_id
-            youtube_dl_opts = {}
-            with youtube_dl.YoutubeDL(youtube_dl_opts) as ydl:
-                info_dict = ydl.extract_info(video_url, download=False)
-                video_url = info_dict.get("url", None)
-                video_id = info_dict.get("id", None)
-                video_title = info_dict.get("title", None)
-                video_title = video_title.split("|")[0]
-                video_id_titles_dict[video_title] = video_id
-                video_titles_list.append(video_title)
-                # print(video_title)
-
-        print("\n\n\n")
-        print(self.video_topics_list)
-        print(video_id_titles_dict)
-        topic_match = Topic_Matcher(self.video_topics_list, video_id_titles_dict)
-        final_dict = topic_match.single_pass()
-        print(final_dict)
-        matched_video_id_list = list(final_dict.values())
-
-        print("Downloading Videos..")
-        for output_file, video_id in zip(self.full_course_slugs, matched_video_id_list):
-            youtube_url = "https://www.youtube.com/watch?v=" + video_id
-            with youtube_dl.YoutubeDL({"outtmpl": output_file}) as ydl:
-                ydl.download([youtube_url])
+    def download_videos(self, downloader=None, fail_fast=False):
+        media = downloader or MediaDownloader(self.options, progress=self.progress)
+        directories = dict(self.download_jobs)
+        class CourseMedia:
+            def download(self, url):
+                return media.download(url, directory=directories[url])
+        return BatchRunner(CourseMedia(), fail_fast=fail_fast).run(directories)
