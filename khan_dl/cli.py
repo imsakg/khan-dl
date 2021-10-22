@@ -52,16 +52,45 @@ def options_from_args(args):
 
 
 def main(argv=None):
-    args = build_parser().parse_args(argv)
-    from .khan_downloader import Khan_DL
-    from .interactive_prompt import course_selection_prompt, get_all_course_urls
-    urls = ([course_selection_prompt()] if args.interactive else
-            get_all_course_urls() if args.all else [args.course_url])
-    for url in urls:
-        course = Khan_DL('', url)
-        course.get_course_html()
-        course.generate_unit_slugs()
-        course.generate_unit_urls()
-        course.generate_course_slugs_video_ids()
-        course.download_videos()
-    return 0
+    import sys
+    from .batch import BatchRunner, read_manifest
+    from .media import MediaDownloader
+    from .reports import write_report
+    parser = build_parser()
+    args = parser.parse_args(argv)
+    try:
+        options = options_from_args(args)
+        if args.url or args.batch_file:
+            if args.batch_file:
+                with open(args.batch_file, encoding='utf-8-sig') as stream:
+                    urls = read_manifest(stream)
+            else:
+                from .urls import validate_url
+                urls = [validate_url(args.url)]
+            results = BatchRunner(MediaDownloader(options), fail_fast=args.fail_fast).run(urls)
+        else:
+            from .khan_downloader import Khan_DL
+            from .interactive_prompt import course_selection_prompt, get_all_course_urls
+            urls = ([course_selection_prompt()] if args.interactive else
+                    get_all_course_urls() if args.all else [args.course_url])
+            results = []
+            for url in urls:
+                course = Khan_DL('', url)
+                course.get_course_html()
+                course.generate_unit_slugs()
+                course.generate_unit_urls()
+                course.generate_course_slugs_video_ids()
+                results.extend(course.download_videos())
+        if args.report:
+            write_report(args.report, results)
+        for result in results:
+            if not result.success:
+                print('{}: {}'.format(result.url, result.error), file=sys.stderr)
+        if not args.quiet:
+            print('{} completed, {} failed'.format(sum(r.success for r in results),
+                                                  sum(not r.success for r in results)), file=sys.stderr)
+        return 1 if any(not r.success for r in results) else 0
+    except (ValueError, OSError) as error:
+        parser.error(str(error))
+    except KeyboardInterrupt:
+        return 130

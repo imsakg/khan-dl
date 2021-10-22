@@ -1,7 +1,8 @@
 import contextlib
 import io
 import unittest
-from khan_dl.cli import build_parser, options_from_args
+from unittest.mock import patch
+from khan_dl.cli import build_parser, options_from_args, main
 
 
 class ParserTests(unittest.TestCase):
@@ -17,3 +18,16 @@ class ParserTests(unittest.TestCase):
     def test_sources_are_mutually_exclusive(self):
         with contextlib.redirect_stderr(io.StringIO()), self.assertRaises(SystemExit):
             build_parser().parse_args(['--url', 'https://example.org/a', '--all'])
+
+
+class CommandTests(unittest.TestCase):
+    def test_direct_url_uses_batch_runner_and_returns_success(self):
+        with patch('khan_dl.media.MediaDownloader') as factory, contextlib.redirect_stderr(io.StringIO()):
+            factory.return_value.download.return_value = {'id': 'abc'}
+            self.assertEqual(main(['--url', 'https://example.org/a', '--quiet']), 0)
+            factory.return_value.download.assert_called_once_with('https://example.org/a')
+
+    def test_invalid_options_exit_as_usage_error(self):
+        with contextlib.redirect_stderr(io.StringIO()), self.assertRaises(SystemExit) as caught:
+            main(['--url', 'https://example.org/a', '--retries', '-1'])
+        self.assertEqual(caught.exception.code, 2)
