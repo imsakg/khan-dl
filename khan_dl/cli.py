@@ -75,12 +75,14 @@ def main(argv=None):
                     get_all_course_urls() if args.all else [args.course_url])
             results = []
             for url in urls:
-                course = Khan_DL('', url)
+                course = Khan_DL(args.output, url, options=options)
                 course.get_course_html()
                 course.generate_unit_slugs()
                 course.generate_unit_urls()
                 course.generate_course_slugs_video_ids()
-                results.extend(course.download_videos())
+                results.extend(course.download_videos(fail_fast=args.fail_fast))
+                if args.fail_fast and any(not result.success for result in results):
+                    break
         if args.report:
             write_report(args.report, results)
         for result in results:

@@ -31,3 +31,14 @@ class CommandTests(unittest.TestCase):
         with contextlib.redirect_stderr(io.StringIO()), self.assertRaises(SystemExit) as caught:
             main(['--url', 'https://example.org/a', '--retries', '-1'])
         self.assertEqual(caught.exception.code, 2)
+
+
+class CourseCommandTests(unittest.TestCase):
+    def test_course_receives_shared_options_and_fail_fast(self):
+        with patch('khan_dl.khan_downloader.Khan_DL') as factory, contextlib.redirect_stderr(io.StringIO()):
+            factory.return_value.download_videos.return_value = []
+            self.assertEqual(main(['-c', 'https://www.khanacademy.org/math/course',
+                                   '-o', 'lessons', '-x', '--fail-fast']), 0)
+            self.assertEqual(factory.call_args.args[0], 'lessons')
+            self.assertEqual(factory.call_args.kwargs['options'].mode, 'audio')
+            factory.return_value.download_videos.assert_called_once_with(fail_fast=True)
