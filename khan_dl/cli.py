@@ -56,10 +56,12 @@ def main(argv=None):
     from .batch import BatchRunner, read_manifest
     from .media import MediaDownloader
     from .reports import write_report
+    from .progress import TerminalProgress
     parser = build_parser()
     args = parser.parse_args(argv)
     try:
         options = options_from_args(args)
+        progress = None if args.quiet else TerminalProgress()
         if args.url or args.batch_file:
             if args.batch_file:
                 with open(args.batch_file, encoding='utf-8-sig') as stream:
@@ -67,7 +69,7 @@ def main(argv=None):
             else:
                 from .urls import validate_url
                 urls = [validate_url(args.url)]
-            results = BatchRunner(MediaDownloader(options), fail_fast=args.fail_fast).run(urls)
+            results = BatchRunner(MediaDownloader(options, progress=progress), fail_fast=args.fail_fast).run(urls)
         else:
             from .khan_downloader import Khan_DL
             from .interactive_prompt import course_selection_prompt, get_all_course_urls
@@ -75,7 +77,7 @@ def main(argv=None):
                     get_all_course_urls() if args.all else [args.course_url])
             results = []
             for url in urls:
-                course = Khan_DL(args.output, url, options=options)
+                course = Khan_DL(args.output, url, options=options, progress=progress)
                 course.get_course_html()
                 course.generate_unit_slugs()
                 course.generate_unit_urls()

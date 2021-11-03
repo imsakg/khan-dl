@@ -28,3 +28,23 @@ class ProgressTracker:
                                     downloaded, total, percent, data.get('speed'), data.get('eta'))
         if self.callback is not None:
             self.callback(self.latest)
+
+
+class TerminalProgress:
+    """Throttled line output; finished means transfer done, not conversion done."""
+    def __init__(self, stream=None, interval=0.5, clock=None):
+        import sys
+        import time
+        self.stream = stream if stream is not None else sys.stderr
+        self.interval = interval
+        self.clock = clock or time.monotonic
+        self.last_time = None
+
+    def __call__(self, event):
+        now = self.clock()
+        if event.status == 'downloading' and self.last_time is not None and now - self.last_time < self.interval:
+            return
+        self.last_time = now
+        size = '{:.1f}%'.format(event.percent) if event.percent is not None else '{} bytes'.format(event.downloaded)
+        filename = ''.join(c for c in event.filename if c.isprintable())
+        print('{} {} {}'.format(event.status, size, filename).rstrip(), file=self.stream, flush=True)
