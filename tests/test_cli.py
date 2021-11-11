@@ -42,3 +42,14 @@ class CourseCommandTests(unittest.TestCase):
             self.assertEqual(factory.call_args.args[0], 'lessons')
             self.assertEqual(factory.call_args.kwargs['options'].mode, 'audio')
             factory.return_value.download_videos.assert_called_once_with(fail_fast=True)
+
+
+class DryRunTests(unittest.TestCase):
+    def test_dry_run_extracts_json_without_downloading(self):
+        import json
+        stdout = io.StringIO()
+        with patch('khan_dl.media.MediaDownloader') as factory, contextlib.redirect_stdout(stdout):
+            factory.return_value.extract.return_value = {'id': 'abc', 'title': 'Intro'}
+            self.assertEqual(main(['--url', 'https://example.org/a', '--dry-run']), 0)
+            factory.return_value.download.assert_not_called()
+            self.assertEqual(json.loads(stdout.getvalue())['id'], 'abc')

@@ -53,6 +53,8 @@ def options_from_args(args):
 
 def main(argv=None):
     import sys
+    import json
+    from dataclasses import replace
     from .batch import BatchRunner, read_manifest
     from .media import MediaDownloader
     from .reports import write_report
@@ -61,7 +63,9 @@ def main(argv=None):
     args = parser.parse_args(argv)
     try:
         options = options_from_args(args)
-        progress = None if args.quiet else TerminalProgress()
+        progress = None if args.quiet or args.dry_run else TerminalProgress()
+        if args.dry_run:
+            options = replace(options, quiet=True)
         if args.url or args.batch_file:
             if args.batch_file:
                 with open(args.batch_file, encoding='utf-8-sig') as stream:
@@ -69,6 +73,10 @@ def main(argv=None):
             else:
                 from .urls import validate_url
                 urls = [validate_url(args.url)]
+            if args.dry_run:
+                for url in urls:
+                    print(json.dumps(MediaDownloader(options).extract(url), ensure_ascii=False, default=str))
+                return 0
             results = BatchRunner(MediaDownloader(options, progress=progress), fail_fast=args.fail_fast).run(urls)
         else:
             from .khan_downloader import Khan_DL
@@ -82,9 +90,15 @@ def main(argv=None):
                 course.generate_unit_slugs()
                 course.generate_unit_urls()
                 course.generate_course_slugs_video_ids()
+                if args.dry_run:
+                    for media_url, directory in course.download_jobs:
+                        print(json.dumps(MediaDownloader(options).extract(media_url), ensure_ascii=False, default=str))
+                    continue
                 results.extend(course.download_videos(fail_fast=args.fail_fast))
                 if args.fail_fast and any(not result.success for result in results):
                     break
+        if args.dry_run:
+            return 0
         if args.report:
             write_report(args.report, results)
         for result in results:
