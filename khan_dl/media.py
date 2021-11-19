@@ -44,7 +44,7 @@ class MediaDownloader:
                       writesubtitles=bool(self.options.subtitle_languages) or self.options.subtitle_only,
                       writeautomaticsub=self.options.automatic_subtitles,
                       subtitleslangs=list(self.options.subtitle_languages) or None,
-                      subtitlesformat=self.options.subtitle_format)
+                      subtitlesformat=self.options.subtitle_format if self.options.subtitle_format == 'best' else self.options.subtitle_format + '/best')
         if self.options.mode == 'audio':
             result['postprocessors'] = [{'key': 'FFmpegExtractAudio',
                 'preferredcodec': self.options.audio_format,
@@ -52,6 +52,9 @@ class MediaDownloader:
         if self.options.video_format and self.options.mode == 'video':
             result['postprocessors'] = [{'key': 'FFmpegVideoConvertor',
                                         'preferedformat': self.options.video_format}]
+        if self.options.subtitle_format != 'best' and (self.options.subtitle_languages or self.options.subtitle_only or self.options.automatic_subtitles):
+            result.setdefault('postprocessors', []).append(
+                {'key': 'FFmpegSubtitlesConvertor', 'format': self.options.subtitle_format})
         if self.options.ffmpeg_location:
             result['ffmpeg_location'] = self.options.ffmpeg_location
         return result

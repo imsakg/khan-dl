@@ -50,7 +50,8 @@ class MediaTests(unittest.TestCase):
         self.assertTrue(options['writesubtitles'])
         self.assertTrue(options['writeautomaticsub'])
         self.assertEqual(options['subtitleslangs'], ['en', 'tr'])
-        self.assertEqual(options['subtitlesformat'], 'srt')
+        self.assertEqual(options['subtitlesformat'], 'srt/best')
+        self.assertIn({'key': 'FFmpegSubtitlesConvertor', 'format': 'srt'}, options['postprocessors'])
         self.assertFalse(self.downloader.backend_options()['writeautomaticsub'])
 
     def test_subtitle_only_does_not_download_media(self):
