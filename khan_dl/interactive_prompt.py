@@ -1,83 +1,52 @@
-from prompt_toolkit import prompt
-from prompt_toolkit.completion import (
-    WordCompleter,
-    Completer,
-    FuzzyWordCompleter,
-)
-from bs4 import BeautifulSoup
-import requests
+"""Optional interactive catalog selection; HTTP work stays in the fetch layer."""
+from urllib.parse import urljoin, urlsplit
+from .http import fetch_html
 
-def get_all_course_urls():
-    course_domains = ["Math", "Science", "Computing", "Humanities", "Economics-Finance-Domain"]
-    all_course_urls = []
-    for course_domain in course_domains:
-        print("Processing Course Domain: ", course_domain)
-        course_url_list = []
-        course_list_page_url = (
-            "https://www.khanacademy.org/" + course_domain.lower()
-        )
 
-        print("\nDownloading Course List...\n")
-        # Download Selected Course Domain Page HTML
-        course_list_page_source = requests.get(course_list_page_url).text
-        course_list_page_html = BeautifulSoup(course_list_page_source, "lxml")
+course_domains = {'MATH': '/math', 'SCIENCE': '/science', 'ARTS & HUMANITIES': '/humanities',
+                  'COMPUTING': '/computing', 'ECONOMICS': '/economics-finance-domain',
+                  'TEST PREP': '/test-prep'}
 
-        for courses_header_section in course_list_page_html.find_all("h2", class_="_158q6at"):
-            course_header_tag = courses_header_section.find("a", class_="_dwmetq")
 
-            course_header = courses_header_section.find("a", class_="_dwmetq").text
-            course_header_slug = course_header_tag["href"]
+def get_course_urls(course_domain):
+    url = urljoin('https://www.khanacademy.org/', course_domain)
+    if urlsplit(url).hostname != 'www.khanacademy.org':
+        raise ValueError('catalog URL must belong to Khan Academy')
+    soup = fetch_html(url)
+    courses, seen = {}, set()
+    for node in soup.find_all('a', class_='_1q2jm21'):
+        href = node.get('href')
+        if not href:
+            continue
+        course_url = urljoin(url, href)
+        if urlsplit(course_url).hostname != 'www.khanacademy.org':
+            continue
+        if course_url not in seen:
+            seen.add(course_url)
+            title = node.get_text(' ', strip=True) or course_url
+            # Do not silently discard two distinct courses with the same display title.
+            if title in courses:
+                title += ' (' + course_url + ')'
+            courses[title] = course_url
+    if not courses:
+        raise ValueError('No catalog courses found; Khan Academy markup may have changed')
+    return courses
 
-            course_url_list.append("https://www.khanacademy.org" + course_header_slug)
-        all_course_urls.extend(course_url_list)
-    return all_course_urls
 
 def course_selection_prompt():
-    # COURSE LIST URLs
-    # https://www.khanacademy.org/math/
-    # https://www.khanacademy.org/science/
-    # https://www.khanacademy.org/computing
-    # https://www.khanacademy.org/humanities
-    # https://www.khanacademy.org/economics-finance-domain
+    from prompt_toolkit.shortcuts import radiolist_dialog
+    domain = radiolist_dialog(title='Khan Academy', text='Select a domain',
+                              values=[(path, name) for name, path in course_domains.items()]).run()
+    if domain is None:
+        raise KeyboardInterrupt()
+    courses = get_course_urls(domain)
+    course = radiolist_dialog(title='Khan Academy', text='Select a course',
+                              values=[(url, name) for name, url in courses.items()]).run()
+    if course is None:
+        raise KeyboardInterrupt()
+    return course
 
-    # Choose a Course Domain
-    course_domain_completer = FuzzyWordCompleter(
-        ["Math", "Science", "Computing", "Humanities", "Economics-Finance-Domain"]
-    )
-    selected_course_domain = prompt(
-        "Course Domain: ", completer=course_domain_completer
-    )
-    print("Selected Course Domain: %s" % selected_course_domain)
 
-    # Get a list of all the courses in the domain
-    course_list = []
-    course_url_list = []
-    course_list_page_url = (
-        "https://www.khanacademy.org/" + selected_course_domain.lower()
-    )
-
-    print("\nDownloading Course List...\n")
-    # Download Selected Course Domain Page HTML
-    course_list_page_source = requests.get(course_list_page_url).text
-    course_list_page_html = BeautifulSoup(course_list_page_source, "lxml")
-
-    for courses_header_section in course_list_page_html.find_all(
-        "h2", class_="_158q6at"
-    ):
-        course_header_tag = courses_header_section.find("a", class_="_dwmetq")
-
-        course_header = courses_header_section.find("a", class_="_dwmetq").text
-        course_header_slug = course_header_tag["href"]
-
-        course_url_list.append("https://www.khanacademy.org" + course_header_slug)
-        course_list.append(course_header)
-
-    # Choose a Course
-    course_list_completer = FuzzyWordCompleter(course_list)
-    selected_course = prompt("Course: ", completer=course_list_completer)
-    print("\nSelected Course Domain: %s\n" % selected_course)
-
-    # Find the selected course index and match the Course URL
-    selected_course_index = course_list.index(selected_course)
-    selected_course_url = course_url_list[selected_course_index]
-    return selected_course_url
+def get_all_course_urls():
+    return list(dict.fromkeys(url for domain in course_domains.values()
+                             for url in get_course_urls(domain).values()))
