@@ -25,6 +25,12 @@ class LocalMediaTests(unittest.TestCase):
         class Handler(SimpleHTTPRequestHandler):
             def log_message(self, *args):
                 pass
+        (cls.root / 'captions.vtt').write_text(chr(10).join(['WEBVTT', '',
+            '00:00:00.000 --> 00:00:00.250', 'Hello course', '']), encoding='utf-8')
+        (cls.root / 'page.html').write_text('<html><title>Lesson</title><video controls>'
+            '<source src="clip.mp4" type="video/mp4">'
+            '<track kind="subtitles" src="captions.vtt" srclang="en" label="English">'
+            '</video></html>', encoding='utf-8')
         cls.server = ThreadingHTTPServer(('127.0.0.1', 0), functools.partial(Handler, directory=str(cls.root)))
         cls.thread = threading.Thread(target=cls.server.serve_forever, daemon=True)
         cls.thread.start()
@@ -64,3 +70,31 @@ class LocalMediaTests(unittest.TestCase):
             media = MediaDownloader(DownloadOptions(output=directory, quiet=True, retries=0))
             self.assertEqual(media.extract(self.url)['ext'], 'mp4')
             self.assertEqual(list(Path(directory).iterdir()), [])
+
+    def test_video_conversion_produces_matroska(self):
+        with tempfile.TemporaryDirectory() as directory:
+            media = MediaDownloader(DownloadOptions(output=directory, video_format='mkv', quiet=True, retries=0))
+            media.download(self.url, title='converted')
+            path = Path(directory) / 'converted.mkv'
+            self.assertTrue(path.exists())
+            self.assertTrue(any(stream['codec_type'] == 'video' for stream in self.probe(path)))
+
+    def test_subtitle_only_converts_vtt_to_srt_without_video(self):
+        with tempfile.TemporaryDirectory() as directory:
+            options = DownloadOptions(output=directory, subtitle_only=True, subtitle_languages=('en',),
+                                      subtitle_format='srt', quiet=True, retries=0)
+            media = MediaDownloader(options)
+            media.download(self.url.replace('clip.mp4', 'page.html'), title='captions')
+            self.assertIn('Hello course', (Path(directory) / 'captions.en.srt').read_text())
+            self.assertFalse((Path(directory) / 'captions.mp4').exists())
+
+    def test_archive_records_only_completed_media(self):
+        with tempfile.TemporaryDirectory() as directory:
+            archive = Path(directory) / 'archive.txt'
+            media = MediaDownloader(DownloadOptions(output=directory, archive=str(archive),
+                                                   write_metadata=True, quiet=True, retries=0))
+            media.download(self.url, title='archived')
+            self.assertTrue(archive.read_text().strip())
+            media.download(self.url, title='archived')
+            self.assertEqual(len(archive.read_text().splitlines()), 1)
+            self.assertTrue((Path(directory) / 'archived.info.json').exists())

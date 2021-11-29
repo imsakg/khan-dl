@@ -78,6 +78,20 @@ class MediaDownloader:
         def operation():
             with self.backend_factory(options) as backend:
                 info = backend.extract_info(url, download=download)
+                if download and self.options.subtitle_only and self.options.subtitle_format != 'best' and info:
+                    from youtube_dl.postprocessor.ffmpeg import FFmpegSubtitlesConvertorPP
+                    def convert(entry):
+                        if entry.get('entries') is not None:
+                            for child in entry['entries']:
+                                if child:
+                                    convert(child)
+                            return
+                        entry['filepath'] = backend.prepare_filename(entry)
+                        obsolete, converted = FFmpegSubtitlesConvertorPP(backend, format=self.options.subtitle_format).run(entry)
+                        entry.update(converted)
+                        for filename in obsolete:
+                            Path(filename).unlink()
+                    convert(info)
                 if info is None:
                     raise ValueError('extractor returned no media information')
                 return info
