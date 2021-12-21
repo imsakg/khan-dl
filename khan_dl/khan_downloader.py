@@ -68,10 +68,10 @@ class Khan_DL:
             raise ValueError('No video IDs found; Khan Academy markup may have changed')
         return self.download_jobs
 
-    def download_videos(self, downloader=None, fail_fast=False):
+    def download_videos(self, downloader=None, fail_fast=False, callback=None):
         media = downloader or MediaDownloader(self.options, progress=self.progress)
         directories = dict(self.download_jobs)
         class CourseMedia:
             def download(self, url):
                 return media.download(url, directory=directories[url])
-        return BatchRunner(CourseMedia(), fail_fast=fail_fast).run(directories)
+        return BatchRunner(CourseMedia(), fail_fast=fail_fast, callback=callback).run(directories)

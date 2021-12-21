@@ -41,7 +41,7 @@ class CourseCommandTests(unittest.TestCase):
                                    '-o', 'lessons', '-x', '--fail-fast']), 0)
             self.assertEqual(factory.call_args.args[0], 'lessons')
             self.assertEqual(factory.call_args.kwargs['options'].mode, 'audio')
-            factory.return_value.download_videos.assert_called_once_with(fail_fast=True)
+            self.assertTrue(factory.return_value.download_videos.call_args.kwargs['fail_fast'])
 
 
 class DryRunTests(unittest.TestCase):
@@ -53,3 +53,28 @@ class DryRunTests(unittest.TestCase):
             self.assertEqual(main(['--url', 'https://example.org/a', '--dry-run']), 0)
             factory.return_value.download.assert_not_called()
             self.assertEqual(json.loads(stdout.getvalue())['id'], 'abc')
+
+
+class ResumeReportTests(unittest.TestCase):
+    def test_report_preserves_completed_items_on_cancellation(self):
+        import json
+        from pathlib import Path
+        import tempfile
+        with tempfile.TemporaryDirectory() as directory:
+            manifest = Path(directory) / 'urls.txt'
+            report = Path(directory) / 'report.json'
+            manifest.write_text(chr(10).join(['https://example.org/a', 'https://example.org/b']))
+            with patch('khan_dl.media.MediaDownloader') as factory:
+                factory.return_value.download.side_effect = [{'id': 'abc'}, KeyboardInterrupt()]
+                self.assertEqual(main(['--batch-file', str(manifest), '--report', str(report), '-q']), 130)
+            self.assertEqual(json.loads(report.read_text())['total'], 1)
+
+    def test_empty_queue_is_a_usage_error(self):
+        from pathlib import Path
+        import tempfile
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / 'empty.txt'
+            path.write_text('# no URLs')
+            with contextlib.redirect_stderr(io.StringIO()), self.assertRaises(SystemExit) as caught:
+                main(['--batch-file', str(path)])
+            self.assertEqual(caught.exception.code, 2)

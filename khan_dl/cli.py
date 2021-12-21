@@ -62,6 +62,11 @@ def main(argv=None):
     parser = build_parser()
     args = parser.parse_args(argv)
     try:
+        completed = []
+        def record(result):
+            completed.append(result)
+            if args.report:
+                write_report(args.report, completed)
         options = options_from_args(args)
         progress = None if args.quiet or args.dry_run else TerminalProgress()
         if args.dry_run:
@@ -70,6 +75,8 @@ def main(argv=None):
             if args.batch_file:
                 with open(args.batch_file, encoding='utf-8-sig') as stream:
                     urls = read_manifest(stream)
+                if not urls:
+                    raise ValueError('batch manifest contains no URLs')
             else:
                 from .urls import validate_url
                 urls = [validate_url(args.url)]
@@ -77,7 +84,7 @@ def main(argv=None):
                 for url in urls:
                     print(json.dumps(MediaDownloader(options).extract(url), ensure_ascii=False, default=str))
                 return 0
-            results = BatchRunner(MediaDownloader(options, progress=progress), fail_fast=args.fail_fast).run(urls)
+            results = BatchRunner(MediaDownloader(options, progress=progress), fail_fast=args.fail_fast, callback=record).run(urls)
         else:
             from .khan_downloader import Khan_DL
             from .interactive_prompt import course_selection_prompt, get_all_course_urls
@@ -94,7 +101,7 @@ def main(argv=None):
                     for media_url, directory in course.download_jobs:
                         print(json.dumps(MediaDownloader(options).extract(media_url), ensure_ascii=False, default=str))
                     continue
-                results.extend(course.download_videos(fail_fast=args.fail_fast))
+                results.extend(course.download_videos(fail_fast=args.fail_fast, callback=record))
                 if args.fail_fast and any(not result.success for result in results):
                     break
         if args.dry_run:
