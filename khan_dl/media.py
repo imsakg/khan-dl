@@ -35,7 +35,7 @@ class MediaDownloader:
         result = {'progress_hooks': [self.progress], 'ratelimit': self.options.rate_limit,
                   'retries': 0, 'fragment_retries': self.options.retries, 'noplaylist': True, 'socket_timeout': self.options.timeout,
                 'quiet': self.options.quiet, 'format': self.format_selector(),
-                'continuedl': self.options.continue_download,
+                'continuedl': self.options.continue_download and not self.options.overwrite,
                 'nooverwrites': not self.options.overwrite,
                 'outtmpl': str(Path(self.options.output)).replace('%', '%%') + '/%(title)s [%(id)s].%(ext)s'}
         result.update(download_archive=self.options.archive,
@@ -48,7 +48,8 @@ class MediaDownloader:
         if self.options.mode == 'audio':
             result['postprocessors'] = [{'key': 'FFmpegExtractAudio',
                 'preferredcodec': self.options.audio_format,
-                'preferredquality': self.options.audio_quality}]
+                'preferredquality': self.options.audio_quality,
+                'nopostoverwrites': not self.options.overwrite}]
         if self.options.video_format and self.options.mode == 'video':
             result['postprocessors'] = [{'key': 'FFmpegVideoConvertor',
                                         'preferedformat': self.options.video_format}]
@@ -60,8 +61,13 @@ class MediaDownloader:
         return result
 
     def download(self, url, title=None, directory=None):
+        validate_url(url)
         options = self.backend_options()
-        root = directory or self.options.output
+        root = str(Path(directory or self.options.output).expanduser())
+        if self.options.archive:
+            archive = Path(self.options.archive).expanduser()
+            archive.parent.mkdir(parents=True, exist_ok=True)
+            options['download_archive'] = str(archive)
         Path(root).mkdir(parents=True, exist_ok=True)
         if title is not None:
             options['outtmpl'] = output_template(root, title)
@@ -72,11 +78,27 @@ class MediaDownloader:
     def extract(self, url):
         return self._extract(url, self.backend_options(), download=False)
 
+    def _protect_outputs(self, info, backend):
+        filename = backend.prepare_filename(info)
+        if not filename:
+            return None
+        path = Path(filename)
+        if self.options.mode == 'video' and self.options.video_format and not self.options.subtitle_only:
+            if path.with_suffix('.' + self.options.video_format).exists():
+                return 'converted output already exists (use --overwrite to replace)'
+        if self.options.subtitle_format != 'best' and info.get('requested_subtitles'):
+            info['requested_subtitles'] = {
+                language: subtitle for language, subtitle in info['requested_subtitles'].items()
+                if not path.with_suffix('.' + language + '.' + self.options.subtitle_format).exists()}
+        return None
+
     def _extract(self, url, options, download):
         validate_url(url)
         from youtube_dl.utils import DownloadError
         def operation():
             with self.backend_factory(options) as backend:
+                if download and not self.options.overwrite and hasattr(backend, 'params'):
+                    backend.params['match_filter'] = lambda entry: self._protect_outputs(entry, backend)
                 info = backend.extract_info(url, download=download)
                 if download and self.options.subtitle_only and self.options.subtitle_format != 'best' and info:
                     from youtube_dl.postprocessor.ffmpeg import FFmpegSubtitlesConvertorPP
@@ -86,6 +108,8 @@ class MediaDownloader:
                                 if child:
                                     convert(child)
                             return
+                        if not self.options.overwrite:
+                            self._protect_outputs(entry, backend)
                         entry['filepath'] = backend.prepare_filename(entry)
                         obsolete, converted = FFmpegSubtitlesConvertorPP(backend, format=self.options.subtitle_format).run(entry)
                         entry.update(converted)

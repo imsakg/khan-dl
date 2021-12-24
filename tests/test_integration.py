@@ -98,3 +98,28 @@ class LocalMediaTests(unittest.TestCase):
             media.download(self.url, title='archived')
             self.assertEqual(len(archive.read_text().splitlines()), 1)
             self.assertTrue((Path(directory) / 'archived.info.json').exists())
+
+    def test_existing_converted_outputs_are_not_overwritten(self):
+        for kwargs, filename, url in (
+            ({'mode': 'audio'}, 'safe.mp3', self.url),
+            ({'video_format': 'mkv'}, 'safe.mkv', self.url),
+            ({'subtitle_only': True, 'subtitle_languages': ('en',), 'subtitle_format': 'srt'},
+             'safe.en.srt', self.url.replace('clip.mp4', 'page.html'))):
+            with self.subTest(filename=filename), tempfile.TemporaryDirectory() as directory:
+                target = Path(directory) / filename
+                target.write_bytes(b'keep my existing output')
+                MediaDownloader(DownloadOptions(output=directory, quiet=True, retries=0, **kwargs)).download(url, title='safe')
+                self.assertEqual(target.read_bytes(), b'keep my existing output')
+
+    def test_explicit_overwrite_replaces_completed_video(self):
+        with tempfile.TemporaryDirectory() as directory:
+            target = Path(directory) / 'replace.mp4'
+            target.write_bytes(b'stale video')
+            MediaDownloader(DownloadOptions(output=directory, quiet=True, retries=0, overwrite=True)).download(self.url, title='replace')
+            self.assertEqual(target.read_bytes(), (self.root / 'clip.mp4').read_bytes())
+
+    def test_nested_archive_parent_is_created_before_transfer(self):
+        with tempfile.TemporaryDirectory() as directory:
+            archive = Path(directory) / 'state' / 'archive.txt'
+            MediaDownloader(DownloadOptions(output=directory, archive=str(archive), quiet=True, retries=0)).download(self.url, title='nested')
+            self.assertTrue(archive.read_text().strip())

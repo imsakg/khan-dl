@@ -42,7 +42,7 @@ class MediaTests(unittest.TestCase):
         options = MediaDownloader(DownloadOptions(mode='audio', audio_format='flac')).backend_options()
         self.assertEqual(options['format'], 'bestaudio/best')
         self.assertEqual(options['postprocessors'], [{'key': 'FFmpegExtractAudio',
-                         'preferredcodec': 'flac', 'preferredquality': '192'}])
+                         'preferredcodec': 'flac', 'preferredquality': '192', 'nopostoverwrites': True}])
 
     def test_subtitle_languages_and_automatic_caption_opt_in(self):
         options = MediaDownloader(DownloadOptions(subtitle_languages=('en', 'tr'),
