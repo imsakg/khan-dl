@@ -91,6 +91,10 @@ class MediaTests(unittest.TestCase):
         self.assertEqual(options['download_archive'], 'archive.txt')
         self.assertTrue(options['writeinfojson'])
 
+    def test_explicit_audio_selector_is_preserved(self):
+        options = MediaDownloader(DownloadOptions(mode='audio', format_selector='worstaudio')).backend_options()
+        self.assertEqual(options['format'], 'worstaudio')
+
     def test_metadata_extraction_does_not_download_or_expand_playlists(self):
         info = self.downloader.extract('https://example.org/video')
         backend = self.instances[0]

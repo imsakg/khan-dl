@@ -1,5 +1,7 @@
 """Immutable configuration shared by CLI, courses and direct downloads."""
 from dataclasses import dataclass
+import math
+import re
 from typing import Optional, Tuple
 
 
@@ -27,9 +29,17 @@ class DownloadOptions:
     quiet: bool = False
 
     def __post_init__(self):
+        if not self.output:
+            raise ValueError('output directory cannot be empty')
+        if not re.fullmatch(r'[0-9]+', self.audio_quality):
+            raise ValueError('audio quality must be a nonnegative integer (0-9 quality or kbps)')
+        if self.mode == 'audio' and self.video_format is not None:
+            raise ValueError('audio extraction and video conversion are mutually exclusive')
+        if self.height is not None and self.format_selector != 'bestvideo+bestaudio/best':
+            raise ValueError('combine --max-height with the default format, not an explicit --format')
         if self.mode not in ('video', 'audio'):
             raise ValueError('mode must be video or audio')
-        if self.retries < 0 or self.timeout <= 0:
+        if self.retries < 0 or not math.isfinite(self.timeout) or self.timeout <= 0:
             raise ValueError('retries must be nonnegative and timeout positive')
         if self.height is not None and self.height <= 0:
             raise ValueError('height must be positive')

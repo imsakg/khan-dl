@@ -25,7 +25,8 @@ class MediaDownloader:
 
     def format_selector(self):
         if self.options.mode == 'audio':
-            return 'bestaudio/best'
+            return ('bestaudio/best' if self.options.format_selector == 'bestvideo+bestaudio/best'
+                    else self.options.format_selector)
         if self.options.height is not None:
             limit = self.options.height
             return 'bestvideo[height<={0}]+bestaudio/best[height<={0}]'.format(limit)
