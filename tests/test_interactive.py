@@ -10,7 +10,7 @@ class CatalogTests(unittest.TestCase):
                              '<a class="_1q2jm21" href="/math/algebra">Again</a>', 'html.parser')
         with patch('khan_dl.interactive_prompt.fetch_html', return_value=soup) as fetch:
             self.assertEqual(get_course_urls('/math'), {'Algebra': 'https://www.khanacademy.org/math/algebra'})
-            fetch.assert_called_once_with('https://www.khanacademy.org/math')
+            fetch.assert_called_once_with('https://www.khanacademy.org/math', timeout=30, retries=3)
 
     def test_all_courses_are_deduplicated_between_domains(self):
         with patch('khan_dl.interactive_prompt.get_course_urls', return_value={'Intro': 'https://www.khanacademy.org/math/a'}):

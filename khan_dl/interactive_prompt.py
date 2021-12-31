@@ -8,11 +8,11 @@ course_domains = {'MATH': '/math', 'SCIENCE': '/science', 'ARTS & HUMANITIES': '
                   'TEST PREP': '/test-prep'}
 
 
-def get_course_urls(course_domain):
+def get_course_urls(course_domain, timeout=30, retries=3):
     url = urljoin('https://www.khanacademy.org/', course_domain)
     if urlsplit(url).hostname != 'www.khanacademy.org':
         raise ValueError('catalog URL must belong to Khan Academy')
-    soup = fetch_html(url)
+    soup = fetch_html(url, timeout=timeout, retries=retries)
     courses, seen = {}, set()
     for node in soup.find_all('a', class_='_1q2jm21'):
         href = node.get('href')
@@ -33,13 +33,13 @@ def get_course_urls(course_domain):
     return courses
 
 
-def course_selection_prompt():
+def course_selection_prompt(timeout=30, retries=3):
     from prompt_toolkit.shortcuts import radiolist_dialog
     domain = radiolist_dialog(title='Khan Academy', text='Select a domain',
                               values=[(path, name) for name, path in course_domains.items()]).run()
     if domain is None:
         raise KeyboardInterrupt()
-    courses = get_course_urls(domain)
+    courses = get_course_urls(domain, timeout=timeout, retries=retries)
     course = radiolist_dialog(title='Khan Academy', text='Select a course',
                               values=[(url, name) for name, url in courses.items()]).run()
     if course is None:
@@ -47,6 +47,6 @@ def course_selection_prompt():
     return course
 
 
-def get_all_course_urls():
+def get_all_course_urls(timeout=30, retries=3):
     return list(dict.fromkeys(url for domain in course_domains.values()
-                             for url in get_course_urls(domain).values()))
+                             for url in get_course_urls(domain, timeout=timeout, retries=retries).values()))

@@ -78,3 +78,35 @@ class ResumeReportTests(unittest.TestCase):
             with contextlib.redirect_stderr(io.StringIO()), self.assertRaises(SystemExit) as caught:
                 main(['--batch-file', str(path)])
             self.assertEqual(caught.exception.code, 2)
+
+
+class FailureIsolationTests(unittest.TestCase):
+    def test_dry_run_errors_do_not_abort_later_items(self):
+        from pathlib import Path
+        import tempfile
+        from youtube_dl.utils import DownloadError
+        with tempfile.TemporaryDirectory() as directory:
+            manifest = Path(directory) / 'urls.txt'
+            manifest.write_text(chr(10).join(['https://example.org/a', 'https://example.org/b']))
+            with patch('khan_dl.media.MediaDownloader') as factory, contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+                factory.return_value.extract.side_effect = [DownloadError('missing'), {'id': 'b'}]
+                self.assertEqual(main(['--batch-file', str(manifest), '--dry-run', '-q']), 1)
+                self.assertEqual(factory.return_value.extract.call_count, 2)
+
+    def test_course_discovery_failure_is_reported_and_later_courses_continue(self):
+        from unittest.mock import MagicMock
+        from khan_dl.batch import BatchResult
+        from pathlib import Path
+        import tempfile
+        import json
+        first, bad, last = MagicMock(), MagicMock(), MagicMock()
+        first.download_videos.return_value = []
+        bad.get_course_html.side_effect = ValueError('markup changed')
+        last.download_videos.return_value = []
+        with tempfile.TemporaryDirectory() as directory:
+            report = Path(directory) / 'result.json'
+            with patch('khan_dl.interactive_prompt.get_all_course_urls', return_value=['first', 'bad', 'last']) as catalog, patch('khan_dl.khan_downloader.Khan_DL', side_effect=[first, bad, last]), contextlib.redirect_stderr(io.StringIO()):
+                self.assertEqual(main(['--all', '--report', str(report), '--timeout', '2', '--retries', '0']), 1)
+                last.download_videos.assert_called_once()
+                catalog.assert_called_once_with(timeout=2, retries=0)
+            self.assertEqual(json.loads(report.read_text())['failed'], 1)

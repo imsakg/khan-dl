@@ -55,22 +55,27 @@ def main(argv=None):
     import sys
     import json
     from dataclasses import replace
-    from .batch import BatchRunner, read_manifest
+    from .batch import BatchRunner, BatchResult, read_manifest
     from .media import MediaDownloader
     from .reports import write_report
     from .progress import TerminalProgress
     parser = build_parser()
     args = parser.parse_args(argv)
     try:
+        options = options_from_args(args)
+        progress = None if args.quiet or args.dry_run else TerminalProgress()
+        if args.dry_run:
+            options = replace(options, quiet=True)
         completed = []
         def record(result):
             completed.append(result)
             if args.report:
                 write_report(args.report, completed)
-        options = options_from_args(args)
-        progress = None if args.quiet or args.dry_run else TerminalProgress()
-        if args.dry_run:
-            options = replace(options, quiet=True)
+        class InspectionMedia:
+            def download(self, url, directory=None):
+                info = MediaDownloader(options).extract(url)
+                print(json.dumps(info, ensure_ascii=False, default=str))
+                return info
         if args.url or args.batch_file:
             if args.batch_file:
                 with open(args.batch_file, encoding='utf-8-sig') as stream:
@@ -80,42 +85,45 @@ def main(argv=None):
             else:
                 from .urls import validate_url
                 urls = [validate_url(args.url)]
-            if args.dry_run:
-                for url in urls:
-                    print(json.dumps(MediaDownloader(options).extract(url), ensure_ascii=False, default=str))
-                return 0
-            results = BatchRunner(MediaDownloader(options, progress=progress), fail_fast=args.fail_fast, callback=record).run(urls)
+            media = InspectionMedia() if args.dry_run else MediaDownloader(options, progress=progress)
+            BatchRunner(media, fail_fast=args.fail_fast, callback=record).run(urls)
         else:
             from .khan_downloader import Khan_DL
             from .interactive_prompt import course_selection_prompt, get_all_course_urls
-            urls = ([course_selection_prompt()] if args.interactive else
-                    get_all_course_urls() if args.all else [args.course_url])
-            results = []
+            network = {'timeout': options.timeout, 'retries': options.retries}
+            urls = ([course_selection_prompt(**network)] if args.interactive else
+                    get_all_course_urls(**network) if args.all else [args.course_url])
             for url in urls:
-                course = Khan_DL(args.output, url, options=options, progress=progress)
-                course.get_course_html()
-                course.generate_unit_slugs()
-                course.generate_unit_urls()
-                course.generate_course_slugs_video_ids()
-                if args.dry_run:
-                    for media_url, directory in course.download_jobs:
-                        print(json.dumps(MediaDownloader(options).extract(media_url), ensure_ascii=False, default=str))
+                try:
+                    course = Khan_DL(args.output, url, options=options, progress=progress)
+                    course.get_course_html()
+                    course.generate_unit_slugs()
+                    course.generate_unit_urls()
+                    course.generate_course_slugs_video_ids()
+                except Exception as error:
+                    record(BatchResult(url, False, error=str(error)))
+                    if args.fail_fast:
+                        break
                     continue
-                results.extend(course.download_videos(fail_fast=args.fail_fast, callback=record))
-                if args.fail_fast and any(not result.success for result in results):
+                if args.dry_run:
+                    course.download_videos(downloader=InspectionMedia(), fail_fast=args.fail_fast, callback=record)
+                else:
+                    course.download_videos(fail_fast=args.fail_fast, callback=record)
+                if args.fail_fast and any(not result.success for result in completed):
                     break
-        if args.dry_run:
-            return 0
         if args.report:
-            write_report(args.report, results)
-        for result in results:
+            write_report(args.report, completed)
+        for result in completed:
             if not result.success:
                 print('{}: {}'.format(result.url, result.error), file=sys.stderr)
-        if not args.quiet:
-            print('{} completed, {} failed'.format(sum(r.success for r in results),
-                                                  sum(not r.success for r in results)), file=sys.stderr)
-        return 1 if any(not r.success for r in results) else 0
+        if not args.quiet and not args.dry_run:
+            print('{} completed, {} failed'.format(sum(r.success for r in completed),
+                                                  sum(not r.success for r in completed)), file=sys.stderr)
+        return 1 if any(not result.success for result in completed) else 0
     except (ValueError, OSError) as error:
         parser.error(str(error))
     except KeyboardInterrupt:
         return 130
+    except Exception as error:
+        print('khan-dl: {}'.format(error), file=sys.stderr)
+        return 1
