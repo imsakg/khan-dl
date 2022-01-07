@@ -110,3 +110,17 @@ class FailureIsolationTests(unittest.TestCase):
                 last.download_videos.assert_called_once()
                 catalog.assert_called_once_with(timeout=2, retries=0)
             self.assertEqual(json.loads(report.read_text())['failed'], 1)
+
+
+class FailFastTests(unittest.TestCase):
+    def test_dry_run_fail_fast_stops_after_one_failed_item(self):
+        from pathlib import Path
+        import tempfile
+        from youtube_dl.utils import DownloadError
+        with tempfile.TemporaryDirectory() as directory:
+            manifest = Path(directory) / 'urls.txt'
+            manifest.write_text(chr(10).join(['https://example.org/a', 'https://example.org/b']))
+            with patch('khan_dl.media.MediaDownloader') as factory, contextlib.redirect_stderr(io.StringIO()):
+                factory.return_value.extract.side_effect = DownloadError('missing')
+                self.assertEqual(main(['--batch-file', str(manifest), '--dry-run', '--fail-fast', '-q']), 1)
+                self.assertEqual(factory.return_value.extract.call_count, 1)

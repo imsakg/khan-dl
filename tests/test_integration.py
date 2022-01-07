@@ -123,3 +123,13 @@ class LocalMediaTests(unittest.TestCase):
             archive = Path(directory) / 'state' / 'archive.txt'
             MediaDownloader(DownloadOptions(output=directory, archive=str(archive), quiet=True, retries=0)).download(self.url, title='nested')
             self.assertTrue(archive.read_text().strip())
+
+    def test_video_with_existing_converted_subtitle_keeps_that_caption(self):
+        with tempfile.TemporaryDirectory() as directory:
+            target = Path(directory) / 'safe.en.srt'
+            target.write_bytes(b'existing subtitle')
+            options = DownloadOptions(output=directory, subtitle_languages=('en',),
+                                      subtitle_format='srt', quiet=True, retries=0)
+            MediaDownloader(options).download(self.url.replace('clip.mp4', 'page.html'), title='safe')
+            self.assertEqual(target.read_bytes(), b'existing subtitle')
+            self.assertTrue((Path(directory) / 'safe.mp4').exists())

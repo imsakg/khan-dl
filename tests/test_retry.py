@@ -31,3 +31,16 @@ class RetryTests(unittest.TestCase):
             retry_call(lambda: (_ for _ in ()).throw(OSError()), retries=4,
                        delay=3, maximum=5, sleep=sleeps.append)
         self.assertEqual(sleeps, [3, 5, 5, 5])
+
+    def test_keyboard_interrupt_never_retries(self):
+        with self.assertRaises(KeyboardInterrupt):
+            retry_call(lambda: (_ for _ in ()).throw(KeyboardInterrupt()),
+                       sleep=lambda _: self.fail('retried interrupt'))
+
+    def test_retry_callback_receives_attempt_and_wait(self):
+        events = []
+        error = OSError('offline')
+        with self.assertRaises(OSError):
+            retry_call(lambda: (_ for _ in ()).throw(error), retries=1,
+                       sleep=lambda _: None, on_retry=lambda *event: events.append(event))
+        self.assertEqual(events, [(1, error, 1)])
