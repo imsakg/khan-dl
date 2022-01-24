@@ -1,92 +1,79 @@
 # khan-dl
 
-A python script to download courses from  [Khan Academy](https://www.khanacademy.org) using [youtube-dl](https://github.com/ytdl-org/youtube-dl) and [beautifulsoup4](https://pypi.org/project/beautifulsoup4/).
+Download public Khan Academy course videos, or queue individual media URLs.
+This fork keeps the original course-selection interface and adds audio extraction,
+subtitles, FFmpeg conversion, progress, retries and batch reports.
 
-[![Generic badge](https://img.shields.io/badge/Status-Development-<COLOR>.svg)](https://shields.io/)
-![PyPI](https://img.shields.io/pypi/v/khan-dl?style=flat-square)
-![GitHub](https://img.shields.io/github/license/rand-net/khan-dl?style=flat-square)
+Original project: [rand-net/khan-dl](https://github.com/rand-net/khan-dl).
+Local fork: [imsakg/khan-dl](https://github.com/imsakg/khan-dl). MIT licensed.
 
+## Install this checkout
 
-## ⚠ Caution
-* Each Unit webpage(https://www.khanacademy.org/math/cc-1st-grade-math/cc-1st-place-value) currently contains more youtube ids than the lessons themselves.
-* In order to resolve the wrong file name issue, titles of lessons from the webpage
-    and the youtube video have to be matched against one another
+Use Python 3.8 or newer (the verification environment uses Python 3.11).
+Install FFmpeg **and ffprobe** separately and put them on PATH for audio extraction,
+video conversion, caption conversion and combining separate video/audio streams.
 
-* In matching those titles, some of the lesson titles from webpage are quite
-divergent from their respective youtube tiles
-
-* Eg., webpage_lesson_title = "Addition and subtraction word problems:gorillas", youtube_id_titles = ["Exercising gorillas", "Comparison word problems: marbles"]. The latter youtube title is more similar, but it is an entirely different video.
-
-* If there is a solution to match these titles, submit a pull request.
-
-* **TL;DR Few videos will be saved with wrong file name for some courses.**
-
-
-## Installation
-
-* Some videos for certain courses were mixed with different output slugs prior to version 0.1.5
-* ⚠ Update to the latest version using pip.
-
-```
-pip install khan-dl -U
-
+```sh
+python -m pip install .
+# Optional full-screen course picker:
+python -m pip install '.[interactive]'
+khan-dl --help
 ```
 
+The changes in this checkout are not claimed to be available in a published PyPI
+release. Install from this directory to get this version.
 
-## Usage
+## Quick start
 
-```
-$ khan-dl -h
+```sh
+# Course discovery uses historical Khan Academy public-page markup.
+khan-dl -c https://www.khanacademy.org/math/linear-algebra -o lessons
 
-usage: khan-dl [-h] [-i] [-c COURSE_URL]
+# Inspect metadata and available formats as newline-delimited JSON, no media files.
+khan-dl --url 'https://www.youtube.com/watch?v=VIDEO_ID' --dry-run
 
-optional arguments:
-  -h, --help            show this help message and exit
-  -i, --interactive     Enter Interactive Course Selection Mode
-  -c COURSE_URL, --course_url COURSE_URL
-                        Enter Course URL
-  -a, --all             Download all Courses from all Domains
-```
+# Download a public video, optionally cap its resolution.
+khan-dl --url 'https://www.youtube.com/watch?v=VIDEO_ID' --max-height 720 -o videos
 
-* You can download courses interactively on a prompt, which will list all course
-    domains and their respective courses available with tab completion.
+# Extract audio (FFmpeg required).
+khan-dl --url 'https://www.youtube.com/watch?v=VIDEO_ID' -x --audio-format mp3 --audio-quality 192
 
-```
-$ khan-dl -i
+# Download captions only, converting a fallback track to SRT if necessary.
+khan-dl --url 'https://www.youtube.com/watch?v=VIDEO_ID' --skip-download --sub-langs en,tr --sub-format srt
 
-Course Domain: Math
-Selected Course Domain: Math
-
-Downloading Course List...
-
-Course: Linear algebra
-
-Selected Course Domain: Linear algebra
-
-Generating Path Slugs.....
-
-Downloading Videos....
-
+# Batch, persist completed media IDs and checkpoint a JSON report after each item.
+khan-dl --batch-file urls.txt --download-archive state/downloads.txt --report state/result.json -o lessons
 ```
 
-* Download a specific course.
+Replace `VIDEO_ID` with a real authorized media ID. A manifest is UTF-8, one HTTP(S)
+URL per line; blank lines and lines starting with `#` are ignored. Duplicates are
+removed in their original order. Batches are serial and continue after failures
+unless `--fail-fast` is supplied. Interactive selection is `khan-dl -i`; downloading
+every catalog course is explicit `khan-dl --all` and may be very large.
 
-```
-$  khan-dl -c https://www.khanacademy.org/science/ap-physics-1
+## Behavior
 
-```
+- Video defaults to `bestvideo+bestaudio/best`; audio defaults to `bestaudio/best`.
+- `--max-height` applies to the default video selector. It cannot be combined with
+  an explicit `--format`; explicit audio selectors such as `worstaudio` are kept.
+- Partial downloads resume by default. Existing downloads and converted outputs
+  are protected; `--overwrite` explicitly replaces outputs and disables resume.
+- Progress and summaries go to stderr. `--dry-run` emits metadata JSON to stdout;
+  failed inspections follow the same continue/fail-fast policy as downloads.
+- Exit codes: `0` success (including already-present/archived items), `1` item or
+  discovery failures, `2` invalid input/configuration or report-path failure,
+  `130` cancellation. Quiet mode suppresses normal progress, not errors/warnings.
 
-* Download all courses on traditional subjects like Math, Science, Computing, Humanities, Economics-Finance-Domain.
+See [formats and subtitles](docs/formats.md), [batches and recovery](docs/batches.md),
+[development and tests](docs/development.md), and [timestamp provenance](docs/history-provenance.md).
 
-```
-$ khan-dl -a
+## Limits and responsible use
 
-```
-
-
-## Other solutions
-
-Khan Academy is also available for offline usage through these Open Source projects:
-
-* [Kolibri](https://learningequality.org/kolibri/)
-* [Kiwix](https://www.kiwix.org/)
+The course and catalog selectors come from historical HTML. They can fail if Khan
+Academy changes markup; direct public media URLs can be used separately. Extraction
+is supplied by youtube-dl, so service-side changes can also break extraction. The
+offline test suite exercises real local transfers and FFmpeg outputs, **not current
+YouTube or Khan Academy availability**. Missing subtitle languages cannot be invented.
+No DRM bypass, account login, cookies, paid-course access or parallel downloading
+is provided. Download only material you have permission to keep and respect the
+source service's terms and copyright requirements.
