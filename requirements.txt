@@ -1,13 +1,2 @@
-art==5.1
-beautifulsoup4==4.9.3
-certifi==2020.12.5
-chardet==4.0.0
-idna==2.10
-lxml==4.6.2
-prompt-toolkit==3.0.14
-python-Levenshtein==0.12.2
-requests==2.25.1
-soupsieve==2.1
-urllib3==1.26.3
-wcwidth==0.2.5
-youtube-dl==2021.1.24.1
+# Install this checkout and its optional interactive course picker.
+-e .[interactive]
